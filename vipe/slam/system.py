@@ -82,14 +82,15 @@ class StandardResizeStreamProcessor(StreamProcessor):
 class SLAMSystem:
     """Solver-defined SLAM"""
 
-    def __init__(self, device: torch.device, config: DictConfig) -> None:
+    def __init__(self, device: torch.device, config: DictConfig, droid_net: DroidNet | None = None) -> None:
         self.device = device
         self.visualize = config.visualize
         self.config = config.copy()
         OmegaConf.set_struct(self.config, False)
+        self._shared_droid_net = droid_net
 
     def _build_components(self):
-        self.droid_net = DroidNet().to(self.device)
+        self.droid_net = self._shared_droid_net if self._shared_droid_net is not None else DroidNet().to(self.device)
         self.sparse_tracks = build_sparse_tracks(self.config.sparse_tracks, self.config.n_views)
         self.buffer = GraphBuffer(
             height=self.config.height,

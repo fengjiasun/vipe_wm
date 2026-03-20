@@ -23,6 +23,7 @@ import torch
 
 from omegaconf import DictConfig
 
+from vipe.slam.networks.droid_net import DroidNet
 from vipe.slam.system import SLAMOutput, SLAMSystem
 from vipe.streams.base import (
     AssignAttributesProcessor,
@@ -58,6 +59,7 @@ class DefaultAnnotationPipeline(Pipeline):
         self.out_path = Path(self.out_cfg.path)
         self.out_path.mkdir(exist_ok=True, parents=True)
         self.camera_type = CameraType(self.init_cfg.camera_type)
+        self._droid_net: DroidNet | None = None
 
     def _add_init_processors(self, video_stream: VideoStream) -> ProcessedVideoStream:
         init_processors: list[StreamProcessor] = []
@@ -120,7 +122,9 @@ class DefaultAnnotationPipeline(Pipeline):
             self._add_init_processors(video_stream).cache("process", online=True) for video_stream in video_streams
         ]
 
-        slam_pipeline = SLAMSystem(device=torch.device("cuda"), config=self.slam_cfg)
+        if self._droid_net is None:
+            self._droid_net = DroidNet().to(torch.device("cuda"))
+        slam_pipeline = SLAMSystem(device=torch.device("cuda"), config=self.slam_cfg, droid_net=self._droid_net)
         slam_output = slam_pipeline.run(slam_streams, rig=slam_rig, camera_type=self.camera_type)
 
         if self.return_payload:

@@ -64,6 +64,14 @@ class IntrinsicEstimationProcessor(StreamProcessor):
 
 
 class GeoCalibIntrinsicsProcessor(IntrinsicEstimationProcessor):
+    _cached_models: dict[str, "GeoCalib"] = {}
+
+    @classmethod
+    def _get_model(cls, weights: str) -> "GeoCalib":
+        if weights not in cls._cached_models:
+            cls._cached_models[weights] = GeoCalib(weights=weights).cuda().eval()
+        return cls._cached_models[weights]
+
     def __init__(
         self,
         video_stream: VideoStream,
@@ -75,7 +83,7 @@ class GeoCalibIntrinsicsProcessor(IntrinsicEstimationProcessor):
         is_pinhole = camera_type == CameraType.PINHOLE
         weights = "pinhole" if is_pinhole else "distorted"
 
-        model = GeoCalib(weights=weights).cuda()
+        model = self._get_model(weights)
         indexable_stream = CachedVideoStream(video_stream)
 
         if is_pinhole:
@@ -85,7 +93,6 @@ class GeoCalibIntrinsicsProcessor(IntrinsicEstimationProcessor):
                 shared_intrinsics=True,
             )
         else:
-            # Use first frame for calibration
             camera_model = {
                 CameraType.PINHOLE: "pinhole",
                 CameraType.MEI: "simple_mei",
@@ -99,7 +106,6 @@ class GeoCalibIntrinsicsProcessor(IntrinsicEstimationProcessor):
         self.camera_type = camera_type
 
         if not is_pinhole:
-            # Assign distortion parameter
             self.distortion = [res["camera"].dist[0, 0].item()]
 
 

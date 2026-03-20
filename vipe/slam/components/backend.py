@@ -46,30 +46,31 @@ class SLAMBackend:
     def _iterate_with_depth(self, graph: FactorGraph, steps: int, more_iters: bool):
         steps_preintr = steps // 2
         steps_postintr = steps - steps_preintr
+        verbose = self.args.get("solver_verbose", True)
         graph.update_batch(
             itrs=16 if more_iters else 8,
             steps=steps_preintr,
             optimize_intrinsics=self.args.optimize_intrinsics,
             optimize_rig_rotation=self.args.optimize_rig_rotation,
-            solver_verbose=True,
+            solver_verbose=verbose,
         )
         self.video.update_disps_sens(self.depth_model, frame_idx=None)
-        # Don't update intrinsics again!
         graph.update_batch(
             itrs=16 if more_iters else 8,
             steps=steps_postintr,
             optimize_intrinsics=False,
             optimize_rig_rotation=self.args.optimize_rig_rotation,
-            solver_verbose=True,
+            solver_verbose=verbose,
         )
 
     def _iterate_without_depth(self, graph: FactorGraph, steps: int, more_iters: bool):
+        verbose = self.args.get("solver_verbose", True)
         graph.update_batch(
             itrs=16 if more_iters else 8,
             steps=steps,
             optimize_intrinsics=self.args.optimize_intrinsics,
             optimize_rig_rotation=self.args.optimize_rig_rotation,
-            solver_verbose=True,
+            solver_verbose=verbose,
         )
 
     @torch.no_grad()
