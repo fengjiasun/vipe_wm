@@ -43,12 +43,18 @@ class SLAMBackend:
         self.device = device
         self.last_graph: torch.Tensor | None = None
 
+    def _get_ba_itrs(self, more_iters: bool) -> int:
+        if more_iters:
+            return self.args.get("backend_ba_itrs_extra", 16)
+        return self.args.get("backend_ba_itrs", 8)
+
     def _iterate_with_depth(self, graph: FactorGraph, steps: int, more_iters: bool):
         steps_preintr = steps // 2
         steps_postintr = steps - steps_preintr
         verbose = self.args.get("solver_verbose", True)
+        itrs = self._get_ba_itrs(more_iters)
         graph.update_batch(
-            itrs=16 if more_iters else 8,
+            itrs=itrs,
             steps=steps_preintr,
             optimize_intrinsics=self.args.optimize_intrinsics,
             optimize_rig_rotation=self.args.optimize_rig_rotation,
@@ -56,7 +62,7 @@ class SLAMBackend:
         )
         self.video.update_disps_sens(self.depth_model, frame_idx=None)
         graph.update_batch(
-            itrs=16 if more_iters else 8,
+            itrs=itrs,
             steps=steps_postintr,
             optimize_intrinsics=False,
             optimize_rig_rotation=self.args.optimize_rig_rotation,
@@ -65,8 +71,9 @@ class SLAMBackend:
 
     def _iterate_without_depth(self, graph: FactorGraph, steps: int, more_iters: bool):
         verbose = self.args.get("solver_verbose", True)
+        itrs = self._get_ba_itrs(more_iters)
         graph.update_batch(
-            itrs=16 if more_iters else 8,
+            itrs=itrs,
             steps=steps,
             optimize_intrinsics=self.args.optimize_intrinsics,
             optimize_rig_rotation=self.args.optimize_rig_rotation,

@@ -139,6 +139,19 @@ def _save_intrinsics_npy(intrinsics_path: Path, intrinsics, n_frames: int) -> No
     intrinsics_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(intrinsics_path, intr_data)
 
+_SLAM_FAST_PRESET = {
+    "backend_iters": 12,
+    "backend_first_steps": 4,
+    "backend_ba_itrs": 4,
+    "backend_ba_itrs_extra": 8,
+    "frontend_iters1": 2,
+    "frontend_iters2": 1,
+    "frontend_init_iters": 4,
+    "inner_filler_iters": 5,
+    "frontend_backend_steps": 3,
+}
+
+
 def _build_overrides(args: argparse.Namespace) -> list[str]:
     if args.visualize and not args.save_artifacts:
         logging.warning("--visualize requires --save-artifacts; visualization will be skipped.")
@@ -164,6 +177,25 @@ def _build_overrides(args: argparse.Namespace) -> list[str]:
 
     if not args.verbose:
         overrides.append("+pipeline.slam.solver_verbose=false")
+
+    # --- BA tuning overrides ---
+    if args.slam_fast:
+        for key, val in _SLAM_FAST_PRESET.items():
+            overrides.append(f"pipeline.slam.{key}={val}")
+
+    if args.backend_iters is not None:
+        overrides.append(f"pipeline.slam.backend_iters={args.backend_iters}")
+    if args.backend_first_steps is not None:
+        overrides.append(f"pipeline.slam.backend_first_steps={args.backend_first_steps}")
+    if args.backend_ba_itrs is not None:
+        overrides.append(f"pipeline.slam.backend_ba_itrs={args.backend_ba_itrs}")
+    if args.frontend_iters is not None:
+        overrides.append(f"pipeline.slam.frontend_iters1={args.frontend_iters[0]}")
+        overrides.append(f"pipeline.slam.frontend_iters2={args.frontend_iters[1]}")
+    if args.frontend_init_iters is not None:
+        overrides.append(f"pipeline.slam.frontend_init_iters={args.frontend_init_iters}")
+    if args.inner_filler_iters is not None:
+        overrides.append(f"pipeline.slam.inner_filler_iters={args.inner_filler_iters}")
 
     return overrides
 
@@ -400,6 +432,57 @@ def main() -> None:
         action="store_true",
         help="Show per-video logs and internal ViPE logs.",
     )
+
+    # --- BA iteration tuning (see docs/ba_tuning.md for details) ---
+    ba_group = parser.add_argument_group(
+        "BA tuning",
+        "Control Bundle Adjustment iteration counts. "
+        "Lower values = faster but less accurate. See docs/ba_tuning.md.",
+    )
+    ba_group.add_argument(
+        "--backend-iters",
+        type=int,
+        default=None,
+        help="Global BA second-pass steps (default: 24). Most impactful param.",
+    )
+    ba_group.add_argument(
+        "--backend-first-steps",
+        type=int,
+        default=None,
+        help="Global BA first-pass steps (default: 7).",
+    )
+    ba_group.add_argument(
+        "--backend-ba-itrs",
+        type=int,
+        default=None,
+        help="BA inner iterations per backend step (default: 8).",
+    )
+    ba_group.add_argument(
+        "--frontend-iters",
+        type=int,
+        nargs=2,
+        metavar=("ITERS1", "ITERS2"),
+        default=None,
+        help="Frontend BA iters: first-stage second-stage (default: 4 2).",
+    )
+    ba_group.add_argument(
+        "--frontend-init-iters",
+        type=int,
+        default=None,
+        help="Frontend initialization BA iterations (default: 8).",
+    )
+    ba_group.add_argument(
+        "--inner-filler-iters",
+        type=int,
+        default=None,
+        help="Inner filler BA iterations per chunk (default: 10).",
+    )
+    ba_group.add_argument(
+        "--slam-fast",
+        action="store_true",
+        help="Preset: halve all BA iterations for ~2x speedup with some accuracy loss.",
+    )
+
     args = parser.parse_args()
     if not hasattr(args, "resume"):
         args.resume = True

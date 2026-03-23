@@ -275,14 +275,16 @@ class SLAMSystem:
             # Run the backend in between to correct intrinsics and extrinsics in advance
             # to avoid large errors and local minima.
             if self.buffer.n_frames in self.config.frontend_backend_iters and is_keyframe:
-                self.backend.run_if_necessary(5, log=self.visualize)
+                fb_steps = self.config.get("frontend_backend_steps", 5)
+                self.backend.run_if_necessary(fb_steps, log=self.visualize)
 
         # Tracks can be determined earlier since it's fixed after frontend.
         if self.visualize:
             self.buffer.log_tracks()
 
         # Run the backend to perform a global BA over the keyframes.
-        self.backend.run(7, log=self.visualize)
+        backend_first_steps = self.config.get("backend_first_steps", 7)
+        self.backend.run(backend_first_steps, log=self.visualize)
 
         # Run backend again with a new graph and cleared GRU states.
         self.backend.run(self.config.backend_iters, update_depth=False, log=self.visualize)

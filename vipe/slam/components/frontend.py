@@ -53,8 +53,9 @@ class SLAMFrontend:
         self.is_initialized = False
 
         self.max_age = 25
-        self.iters1 = 4
-        self.iters2 = 2
+        self.iters1 = args.get("frontend_iters1", 4)
+        self.iters2 = args.get("frontend_iters2", 2)
+        self.init_iters = args.get("frontend_init_iters", 8)
 
         # Number of frames to wait before initializing (default 8)
         self.args = args
@@ -129,12 +130,12 @@ class SLAMFrontend:
         self.t1 = self.video.n_frames
 
         self.graph.add_neighborhood_factors(0, self.t1, r=1 if self.args.seq_init else 3)
-        for _ in range(8):
+        for _ in range(self.init_iters):
             self.graph.update(t0=1, use_inactive=True, fixed_motion=self.has_init_pose)
 
         if not self.args.seq_init:
             self.graph.add_proximity_factors(0, 0, rad=2, nms=2, thresh=self.frontend_thresh, remove=False)
-            for _ in range(8):
+            for _ in range(self.init_iters):
                 self.graph.update(t0=1, use_inactive=True, fixed_motion=self.has_init_pose)
 
         if not self.has_init_pose:
