@@ -179,23 +179,26 @@ def _build_overrides(args: argparse.Namespace) -> list[str]:
         overrides.append("+pipeline.slam.solver_verbose=false")
 
     # --- BA tuning overrides ---
+    # Keys not in the base YAML must use "+" prefix for hydra to accept them.
+    # backend_iters already exists in the YAML; all others are runtime-injected.
     if args.slam_fast:
         for key, val in _SLAM_FAST_PRESET.items():
-            overrides.append(f"pipeline.slam.{key}={val}")
+            prefix = "" if key == "backend_iters" else "+"
+            overrides.append(f"{prefix}pipeline.slam.{key}={val}")
 
     if args.backend_iters is not None:
         overrides.append(f"pipeline.slam.backend_iters={args.backend_iters}")
     if args.backend_first_steps is not None:
-        overrides.append(f"pipeline.slam.backend_first_steps={args.backend_first_steps}")
+        overrides.append(f"+pipeline.slam.backend_first_steps={args.backend_first_steps}")
     if args.backend_ba_itrs is not None:
-        overrides.append(f"pipeline.slam.backend_ba_itrs={args.backend_ba_itrs}")
+        overrides.append(f"+pipeline.slam.backend_ba_itrs={args.backend_ba_itrs}")
     if args.frontend_iters is not None:
-        overrides.append(f"pipeline.slam.frontend_iters1={args.frontend_iters[0]}")
-        overrides.append(f"pipeline.slam.frontend_iters2={args.frontend_iters[1]}")
+        overrides.append(f"+pipeline.slam.frontend_iters1={args.frontend_iters[0]}")
+        overrides.append(f"+pipeline.slam.frontend_iters2={args.frontend_iters[1]}")
     if args.frontend_init_iters is not None:
-        overrides.append(f"pipeline.slam.frontend_init_iters={args.frontend_init_iters}")
+        overrides.append(f"+pipeline.slam.frontend_init_iters={args.frontend_init_iters}")
     if args.inner_filler_iters is not None:
-        overrides.append(f"pipeline.slam.inner_filler_iters={args.inner_filler_iters}")
+        overrides.append(f"+pipeline.slam.inner_filler_iters={args.inner_filler_iters}")
 
     return overrides
 

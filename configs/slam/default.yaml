@@ -23,22 +23,6 @@ backend_thresh: 22.0
 backend_radius: 2
 backend_nms: 3
 backend_iters: 24
-# Steps for the first global BA pass (before GRU state reset)
-backend_first_steps: 7
-# BA inner iterations per step in backend (used when NOT optimizing intrinsics/rig)
-backend_ba_itrs: 8
-# BA inner iterations per step when optimizing intrinsics or rig rotation
-backend_ba_itrs_extra: 16
-# Frontend: BA iterations for initial keyframe update
-frontend_iters1: 4
-# Frontend: BA iterations for secondary keyframe update (when keyframe is kept)
-frontend_iters2: 2
-# Frontend: BA iterations during SLAM initialization
-frontend_init_iters: 8
-# Inner filler: BA iterations per chunk for non-keyframe pose interpolation
-inner_filler_iters: 10
-# Steps for frontend-triggered mid-stream backend runs
-frontend_backend_steps: 5
 # Initial values for disparity
 init_disp: 1.0
 # Whether to optimize intrinsics

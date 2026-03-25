@@ -353,29 +353,186 @@ Pass 2: 内填充（非关键帧位姿插值）
 
 ---
 
-## CLI 使用示例
+## 批量推理命令
+
+### 输入文件格式（jsonl）
+
+每行一个视频路径，支持纯路径或 JSON 对象：
+
+```jsonl
+/data/videos/clip001.mp4
+/data/videos/clip002.mp4
+```
+
+或指定字段名（配合 `--field video`）：
+
+```jsonl
+{"video": "/data/videos/clip001.mp4", "label": "scene_a"}
+{"video": "/data/videos/clip002.mp4", "label": "scene_b"}
+```
+
+自动识别的字段名（无需 `--field`）：`video`, `video_path`, `path`, `filepath`, `file`。
+
+### 输出目录结构
+
+```
+pose_output/
+├── pose/{group}/{video_name}.mp4.npy          # (N, 4, 4) c2w 矩阵
+├── intrinsics/{group}/{video_name}.mp4.npy    # (N, 4) [fx, fy, cx, cy]
+└── vipe_errors/infer_errors_worker{i}.jsonl   # 失败记录（如有）
+```
+
+其中 `{group}` 取自视频所在的父目录名（如果父目录为 `clips`，则取上一级目录名）。
+
+### 8 卡 GPU 全量生产命令
 
 ```bash
-# 默认参数（完整精度）
-python scripts/infer_jsonl_pose.py input.jsonl -o output/
-
-# 快速预设（约 2x 加速）
-python scripts/infer_jsonl_pose.py input.jsonl -o output/ --slam-fast
-
-# 仅调后端迭代（最简单的加速）
-python scripts/infer_jsonl_pose.py input.jsonl -o output/ --backend-iters 12
-
-# 精细自定义
-python scripts/infer_jsonl_pose.py input.jsonl -o output/ \
-    --backend-iters 16 \
-    --backend-first-steps 4 \
-    --backend-ba-itrs 4 \
-    --frontend-iters 2 1 \
-    --inner-filler-iters 5
-
-# 组合：pose-only + slam-fast（最大加速）
-python scripts/infer_jsonl_pose.py input.jsonl -o output/ --pose-only-fast --slam-fast
+# ============================================================
+# 推荐：8 卡 + pose-only + slam-fast（最大吞吐量）
+# 默认开启断点续跑，中断后重跑同一命令即可从断点继续
+# ============================================================
+python scripts/infer_jsonl_pose.py videos.jsonl \
+    -o /data/pose_output \
+    --pose-only-fast \
+    --slam-fast \
+    --gpus 0,1,2,3,4,5,6,7 \
+    --workers-per-gpu 1 \
+    --prefetch-queue-size 2 \
+    --cudnn-benchmark
 ```
+
+### 各场景命令速查
+
+#### 1. 全精度（质量优先）
+
+```bash
+python scripts/infer_jsonl_pose.py videos.jsonl \
+    -o /data/pose_output \
+    --gpus 0,1,2,3,4,5,6,7 \
+    --workers-per-gpu 1 \
+    --prefetch-queue-size 2 \
+    --cudnn-benchmark
+```
+
+#### 2. 平衡模式（推荐日常使用）
+
+```bash
+python scripts/infer_jsonl_pose.py videos.jsonl \
+    -o /data/pose_output \
+    --pose-only-fast \
+    --backend-iters 12 \
+    --gpus 0,1,2,3,4,5,6,7 \
+    --workers-per-gpu 1 \
+    --prefetch-queue-size 2 \
+    --cudnn-benchmark
+```
+
+#### 3. 极速模式（速度优先）
+
+```bash
+python scripts/infer_jsonl_pose.py videos.jsonl \
+    -o /data/pose_output \
+    --pose-only-fast \
+    --slam-fast \
+    --gpus 0,1,2,3,4,5,6,7 \
+    --workers-per-gpu 1 \
+    --prefetch-queue-size 2 \
+    --cudnn-benchmark
+```
+
+#### 4. 精细调参模式
+
+```bash
+python scripts/infer_jsonl_pose.py videos.jsonl \
+    -o /data/pose_output \
+    --pose-only-fast \
+    --backend-iters 16 \
+    --backend-ba-itrs 4 \
+    --inner-filler-iters 5 \
+    --gpus 0,1,2,3,4,5,6,7 \
+    --workers-per-gpu 1 \
+    --prefetch-queue-size 2 \
+    --cudnn-benchmark
+```
+
+#### 5. 强制重跑（忽略已有结果）
+
+```bash
+python scripts/infer_jsonl_pose.py videos.jsonl \
+    -o /data/pose_output \
+    --pose-only-fast \
+    --slam-fast \
+    --no-resume \
+    --gpus 0,1,2,3,4,5,6,7 \
+    --workers-per-gpu 1 \
+    --prefetch-queue-size 2 \
+    --cudnn-benchmark
+```
+
+#### 6. 带详细日志（调试/分析性能）
+
+```bash
+python scripts/infer_jsonl_pose.py videos.jsonl \
+    -o /data/pose_output \
+    --pose-only-fast \
+    --slam-fast \
+    --gpus 0,1,2,3,4,5,6,7 \
+    --workers-per-gpu 1 \
+    --prefetch-queue-size 2 \
+    --cudnn-benchmark \
+    --verbose
+```
+
+#### 7. 指定部分 GPU
+
+```bash
+# 只用 4 张卡
+python scripts/infer_jsonl_pose.py videos.jsonl \
+    -o /data/pose_output \
+    --pose-only-fast \
+    --slam-fast \
+    --gpus 0,2,4,6 \
+    --workers-per-gpu 1 \
+    --prefetch-queue-size 2 \
+    --cudnn-benchmark
+```
+
+### 参数速查表
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `jsonl` (位置参数) | — | 视频列表文件路径 |
+| `-o, --output` | `./vipe_results` | 输出目录 |
+| `--gpus` | `auto` | GPU 编号，逗号分隔。`auto` = 全部可用 GPU |
+| `--workers-per-gpu` | `1` | 每张 GPU 的 worker 数。通常 1 即可 |
+| `--workers` | `0` | 总 worker 数（覆盖 workers-per-gpu） |
+| `--prefetch-queue-size` | `1` | 预加载队列大小。设 2 可减少 GPU 空等 |
+| `--cudnn-benchmark` | off | 启用 cuDNN benchmark（固定输入尺寸时加速） |
+| `--pose-only-fast` | off | 跳过实例分割和深度对齐（只输出 pose/intrinsics） |
+| `--slam-fast` | off | BA 迭代减半预设（约 2x 加速） |
+| `--no-resume` | off | 禁用断点续跑，强制重新处理 |
+| `--field` | 自动检测 | jsonl 中视频路径的字段名 |
+| `--verbose` | off | 输出详细日志（含每视频 timing） |
+| `--name-from-path` | off | 用完整路径生成唯一输出文件名 |
+
+### 断点续跑机制
+
+- **默认开启**，无需额外参数
+- 判断逻辑：检查 `pose/{group}/{video}.npy` 和 `intrinsics/{group}/{video}.npy` 是否都存在
+- 两者都存在 → 跳过该视频
+- 任一不存在 → 重新处理
+- 中断后重跑同一命令即可自动续跑
+- 如需强制重跑：加 `--no-resume`
+
+### 性能参考（估算）
+
+以 8×A100 为例（实际取决于视频长度和分辨率）：
+
+| 模式 | 单视频耗时 | 8 卡并行吞吐 |
+|------|-----------|-------------|
+| 全精度 | ~7 分钟 | ~70 视频/小时 |
+| pose-only + backend-iters 12 | ~4 分钟 | ~120 视频/小时 |
+| pose-only + slam-fast | ~3 分钟 | ~160 视频/小时 |
 
 ---
 
@@ -385,15 +542,30 @@ python scripts/infer_jsonl_pose.py input.jsonl -o output/ --pose-only-fast --sla
 
 1. 选 3-5 个代表性视频（简单/中等/复杂运动）
 2. 先用默认参数跑一遍作为 baseline
-3. 分别测试：
-   - `--slam-fast`
-   - `--backend-iters 12`
-   - `--backend-iters 8`
-   - `--backend-ba-itrs 4`
+3. 分别测试不同设置，输出到不同目录：
+
+```bash
+# baseline（全精度）
+python scripts/infer_jsonl_pose.py test.jsonl -o ./results/baseline \
+    --pose-only-fast --gpus 0
+
+# 实验1：仅减 backend_iters
+python scripts/infer_jsonl_pose.py test.jsonl -o ./results/bi12 \
+    --pose-only-fast --backend-iters 12 --gpus 0
+
+# 实验2：slam-fast 预设
+python scripts/infer_jsonl_pose.py test.jsonl -o ./results/fast \
+    --pose-only-fast --slam-fast --gpus 0
+
+# 实验3：精细自定义
+python scripts/infer_jsonl_pose.py test.jsonl -o ./results/custom \
+    --pose-only-fast --backend-iters 16 --backend-ba-itrs 4 --inner-filler-iters 5 --gpus 0
+```
+
 4. 对比指标：
    - **时间**: 看日志中 `pipeline=Xs` 的值
    - **精度**: 比较输出 pose `.npy` 文件，计算轨迹偏差（ATE/RPE）
-   - 或直接目视比较 `--visualize` 输出
+   - 或直接目视比较 `--visualize` 输出（需加 `--save-artifacts`）
 
 ---
 
