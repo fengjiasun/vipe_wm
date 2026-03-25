@@ -233,6 +233,39 @@ def _prefetch_worker(
 EMPTY_CACHE_INTERVAL = 20
 
 
+def _is_cuda_fatal(exc: Exception) -> bool:
+    """Check if the exception indicates an unrecoverable CUDA error."""
+    msg = str(exc).lower()
+    return any(
+        pattern in msg
+        for pattern in (
+            "illegal memory access",
+            "an illegal instruction",
+            "device-side assert",
+            "cublas_status_execution_failed",
+            "cuda error: unknown error",
+        )
+    )
+
+
+def _drain_prefetch_queue(
+    prefetch_queue: "queue_mod.Queue",
+    progress: Any | None,
+    progress_lock: Any | None,
+) -> None:
+    """Consume remaining items from prefetch queue so the prefetch thread can exit."""
+    while True:
+        try:
+            item = prefetch_queue.get(timeout=2)
+        except queue_mod.Empty:
+            break
+        if item is None:
+            break
+        if progress is not None and progress_lock is not None:
+            with progress_lock:
+                progress.value += 1
+
+
 def _process_videos(
     worker_id: int,
     gpu_id: int,
@@ -368,8 +401,11 @@ def _process_videos(
             if args.verbose:
                 batch_logger.exception("[W%d] Failed on %s", worker_id, video_path)
             _write_error(error_log_path, video_path, exc)
+            cuda_fatal = _is_cuda_fatal(exc)
+        else:
+            cuda_fatal = False
         finally:
-            if local_done % EMPTY_CACHE_INTERVAL == 0:
+            if not cuda_fatal and local_done % EMPTY_CACHE_INTERVAL == 0:
                 torch.cuda.empty_cache()
             if progress is not None and progress_lock is not None:
                 with progress_lock:
@@ -377,6 +413,15 @@ def _process_videos(
             if progress is None:
                 _log_local_progress(batch_logger, worker_id, local_done, total, start_time, last_log_time)
                 last_log_time = time.time()
+
+        if cuda_fatal:
+            batch_logger.error(
+                "[W%d] Fatal CUDA error detected — GPU context is poisoned. "
+                "Draining remaining tasks and exiting worker.",
+                worker_id,
+            )
+            _drain_prefetch_queue(prefetch_queue, progress, progress_lock)
+            break
 
     prefetch_thread.join(timeout=5)
 
